@@ -10,6 +10,11 @@ on:
         description: "x.y.z"
         required: true
         type: string
+      prerelease:
+        description: "Marcar como prerelease"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -28,45 +33,50 @@ jobs:
         with:
           node-version: "20"
 
-      # 🧱 Build todas las acciones sin lockfile
+      # Build todas las acciones (sin lockfile)
       - name: Build all actions
         run: |
           echo "Construyendo todas las acciones..."
           for d in .github/actions/*; do
             if [ -f "$d/package.json" ]; then
               echo "---- $d ----"
-              cd "$d"
-              npm install
-              npm run build
-              cd - > /dev/null
+              (cd "$d" && npm install && npm run build)
             fi
           done
-
-          # Verifica si hay cambios en dist/
+          # Verifica dist/ commiteado
           if ! git diff --quiet -- .github/actions/*/dist; then
             echo "::error ::Hay cambios en dist/ sin commitear. Ejecuta 'npm run build' y sube dist/ antes del release."
             exit 1
           fi
 
-      # 🏷️ Crea tag si el workflow se ejecuta manualmente
+      # Crear tag cuando se ejecuta manualmente
       - name: Crear tag desde dispatch (si aplica)
         if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           V="${{ inputs.version }}"
-          if [[ ! "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error ::Versión inválida, usa formato x.y.z"
-            exit 1
-          fi
+          [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error ::Versión inválida (usa x.y.z)"; exit 1; }
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag "v$V" -m "Release v$V"
           git push origin "v$V"
 
-      # 🔁 Actualiza alias mayor (v1 → v1.2.3)
+      # Crear Release (opcional)
+      - name: Crear GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', inputs.version) }}
+          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', inputs.version) }}
+          prerelease: ${{ inputs.prerelease || false }}
+          files: |
+            .github/actions/**/dist/**
+
+      # Alias mayor (v1 → vX.Y.Z) — FIX: calcular TAG correctamente
       - name: Alias mayor (v1 → vX.Y.Z)
+        env:
+          TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', inputs.version) }}
         run: |
-          TAG="${{ github.ref_name || format('v{0}', inputs.version) }}"
-          MAJOR="${TAG%%.*}"
+          echo "TAG=$TAG"
+          MAJOR="${TAG%%.*}"  # v1 de v1.2.3
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -fa "$MAJOR" -m "Update $MAJOR to $TAG" "$TAG"
