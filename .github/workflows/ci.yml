@@ -3,14 +3,13 @@ name: Build Actions (autocommit dist)
 on:
   push:
     branches: [ "main" ]
-    # Evita bucles: si el push solo toca dist/, no vuelve a disparar
     paths-ignore:
       - ".github/actions/**/dist/**"
   pull_request:
     branches: [ "main" ]
 
 permissions:
-  contents: write  # necesario para commitear/pushear
+  contents: write
 
 jobs:
   build-actions:
@@ -50,14 +49,14 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Solo añade el dist de esta acción del matrix
-          git add "${{ matrix.action_path }}/dist" || true
+          ACTION_PATH="${{ matrix.action_path }}"
+          git add "$ACTION_PATH/dist" || true
 
-          # Si no hay cambios, no commitea
           if git diff --cached --quiet; then
-            echo "No hay cambios en ${{ matrix.action_path }}/dist"
+            echo "No hay cambios en $ACTION_PATH/dist"
             exit 0
           fi
 
-          git commit -m "chore(${ { matrix.action_path } }): build dist [skip ci]"
+          echo "Committing changes for $ACTION_PATH"
+          git commit -m "chore(${ACTION_PATH}): build dist [skip ci]"
           git push
