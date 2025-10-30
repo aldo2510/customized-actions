@@ -1,4 +1,5 @@
 name: Release
+
 on:
   push:
     tags:
@@ -17,36 +18,52 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - uses: actions/setup-node@v4
-        with: { node-version: "20" }
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
-      # (Opcional) compilar aquí también si quieres asegurar consistencia
+      # 🧱 Build todas las acciones sin lockfile
       - name: Build all actions
         run: |
+          echo "Construyendo todas las acciones..."
           for d in .github/actions/*; do
             if [ -f "$d/package.json" ]; then
-              (cd "$d" && npm ci && npm run build)
+              echo "---- $d ----"
+              cd "$d"
+              npm install
+              npm run build
+              cd - > /dev/null
             fi
           done
+
+          # Verifica si hay cambios en dist/
           if ! git diff --quiet -- .github/actions/*/dist; then
-            echo "::error ::Hay cambios en dist/ sin commitear."
+            echo "::error ::Hay cambios en dist/ sin commitear. Ejecuta 'npm run build' y sube dist/ antes del release."
             exit 1
           fi
 
+      # 🏷️ Crea tag si el workflow se ejecuta manualmente
       - name: Crear tag desde dispatch (si aplica)
         if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           V="${{ inputs.version }}"
-          [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error ::Versión inválida"; exit 1; }
+          if [[ ! "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error ::Versión inválida, usa formato x.y.z"
+            exit 1
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag "v$V" -m "Release v$V"
           git push origin "v$V"
 
-      - name: Alias mayor (v1 -> vX.Y.Z)
+      # 🔁 Actualiza alias mayor (v1 → v1.2.3)
+      - name: Alias mayor (v1 → vX.Y.Z)
         run: |
           TAG="${{ github.ref_name || format('v{0}', inputs.version) }}"
           MAJOR="${TAG%%.*}"
