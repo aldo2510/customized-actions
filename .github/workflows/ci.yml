@@ -16,16 +16,39 @@ jobs:
           - .github/actions/check-node-version
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: Instalar dependencias
-        working-directory: ${{ matrix.action_path }}
+      # --- Debug fuertes ---
+      - name: Mostrar archivos del repo
         run: |
+          echo "PWD: $PWD"
+          git status --porcelain
+          echo "---- ls -la (raíz) ----"
+          ls -la
+          echo "---- ls -la .github/actions ----"
+          ls -la .github/actions || true
+          echo "---- ls -la de la acción ----"
+          ls -la "${{ matrix.action_path }}" || true
+
+      - name: Validar que exista package.json
+        run: |
+          if [ ! -f "${{ matrix.action_path }}/package.json" ]; then
+            echo "::error ::No existe package.json en ${{ matrix.action_path }}."
+            echo "¿Está commiteado en el mismo commit que disparó el workflow?"
+            exit 1
+          fi
+          echo "Contenido de package.json:"
+          cat "${{ matrix.action_path }}/package.json"
+
+      - name: Instalar dependencias
+        run: |
+          cd "${{ matrix.action_path }}"
           if [ -f package-lock.json ]; then
             npm ci
           else
@@ -33,12 +56,13 @@ jobs:
           fi
 
       - name: Build (ncc)
-        working-directory: ${{ matrix.action_path }}
-        run: npm run build
-
-      - name: Verificar que dist/ está actualizado y commiteado
         run: |
-          if ! git diff --quiet -- ${{ matrix.action_path }}/dist; then
+          cd "${{ matrix.action_path }}"
+          npm run build
+
+      - name: Verificar dist/ actualizado
+        run: |
+          if ! git diff --quiet -- "${{ matrix.action_path }}/dist"; then
             echo "::error ::Hay cambios en ${{ matrix.action_path }}/dist sin commitear. Ejecuta 'npm run build' y sube dist/."
             exit 1
           fi
