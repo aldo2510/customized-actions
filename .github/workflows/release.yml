@@ -22,6 +22,10 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      # Resuelve el TAG correctamente para ambos casos (push de tag o dispatch)
+      TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', inputs.version) }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,7 +37,7 @@ jobs:
         with:
           node-version: "20"
 
-      # Build todas las acciones (sin lockfile)
+      # 🧱 Build todas las acciones sin lockfile
       - name: Build all actions
         run: |
           echo "Construyendo todas las acciones..."
@@ -43,13 +47,14 @@ jobs:
               (cd "$d" && npm install && npm run build)
             fi
           done
+
           # Verifica dist/ commiteado
           if ! git diff --quiet -- .github/actions/*/dist; then
             echo "::error ::Hay cambios en dist/ sin commitear. Ejecuta 'npm run build' y sube dist/ antes del release."
             exit 1
           fi
 
-      # Crear tag cuando se ejecuta manualmente
+      # 🏷️ Crea el tag si vienes por dispatch
       - name: Crear tag desde dispatch (si aplica)
         if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
@@ -60,23 +65,36 @@ jobs:
           git tag "v$V" -m "Release v$V"
           git push origin "v$V"
 
-      # Crear Release (opcional)
-      - name: Crear GitHub Release
+      # 🧾 Asegura que el Release exista (crea si falta)
+      - name: Crear Release vacío si no existe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG no existe. Creando..."
+            gh release create "$TAG" --title "$TAG" --notes "Release $TAG" ${{ inputs.prerelease && '--prerelease' || '' }}
+          else
+            echo "Release $TAG ya existe."
+          fi
+
+      # ⬆️ Sube artefactos (dist de todas las acciones)
+      - name: Subir assets al Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', inputs.version) }}
-          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', inputs.version) }}
+          tag_name: ${{ env.TAG }}
+          name: ${{ env.TAG }}
           prerelease: ${{ inputs.prerelease || false }}
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          append_body: false
           files: |
             .github/actions/**/dist/**
 
-      # Alias mayor (v1 → vX.Y.Z) — FIX: calcular TAG correctamente
+      # 🔁 Alias mayor (v1 → vX.Y.Z)
       - name: Alias mayor (v1 → vX.Y.Z)
-        env:
-          TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', inputs.version) }}
         run: |
-          echo "TAG=$TAG"
-          MAJOR="${TAG%%.*}"  # v1 de v1.2.3
+          echo "TAG=${TAG}"
+          MAJOR="${TAG%%.*}"  # ej. v1 de v1.2.3
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -fa "$MAJOR" -m "Update $MAJOR to $TAG" "$TAG"
