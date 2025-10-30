@@ -1,10 +1,16 @@
-name: CI
+name: Build Actions (autocommit dist)
 
 on:
   push:
     branches: [ "main" ]
+    # Evita bucles: si el push solo toca dist/, no vuelve a disparar
+    paths-ignore:
+      - ".github/actions/**/dist/**"
   pull_request:
     branches: [ "main" ]
+
+permissions:
+  contents: write  # necesario para commitear/pushear
 
 jobs:
   build-actions:
@@ -18,51 +24,40 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      # --- Debug fuertes ---
-      - name: Mostrar archivos del repo
-        run: |
-          echo "PWD: $PWD"
-          git status --porcelain
-          echo "---- ls -la (raíz) ----"
-          ls -la
-          echo "---- ls -la .github/actions ----"
-          ls -la .github/actions || true
-          echo "---- ls -la de la acción ----"
-          ls -la "${{ matrix.action_path }}" || true
-
-      - name: Validar que exista package.json
-        run: |
-          if [ ! -f "${{ matrix.action_path }}/package.json" ]; then
-            echo "::error ::No existe package.json en ${{ matrix.action_path }}."
-            echo "¿Está commiteado en el mismo commit que disparó el workflow?"
-            exit 1
-          fi
-          echo "Contenido de package.json:"
-          cat "${{ matrix.action_path }}/package.json"
-
       - name: Instalar dependencias
+        working-directory: ${{ matrix.action_path }}
         run: |
-          cd "${{ matrix.action_path }}"
           if [ -f package-lock.json ]; then
             npm ci
           else
             npm install
           fi
 
-      - name: Build (ncc)
-        run: |
-          cd "${{ matrix.action_path }}"
-          npm run build
+      - name: Build (ncc) → genera dist/
+        working-directory: ${{ matrix.action_path }}
+        run: npm run build
 
-      - name: Verificar dist/ actualizado
+      - name: Autocommit de dist/ si hay cambios
         run: |
-          if ! git diff --quiet -- "${{ matrix.action_path }}/dist"; then
-            echo "::error ::Hay cambios en ${{ matrix.action_path }}/dist sin commitear. Ejecuta 'npm run build' y sube dist/."
-            exit 1
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Solo añade el dist de esta acción del matrix
+          git add "${{ matrix.action_path }}/dist" || true
+
+          # Si no hay cambios, no commitea
+          if git diff --cached --quiet; then
+            echo "No hay cambios en ${{ matrix.action_path }}/dist"
+            exit 0
           fi
+
+          git commit -m "chore(${ { matrix.action_path } }): build dist [skip ci]"
+          git push
