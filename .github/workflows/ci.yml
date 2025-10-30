@@ -1,4 +1,5 @@
 name: CI
+
 on:
   push:
     branches: [ "main" ]
@@ -13,25 +14,31 @@ jobs:
         action_path:
           - .github/actions/validate-pom
           - .github/actions/check-node-version
+
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
 
-      - name: Install deps
+      - name: Instalar dependencias
         working-directory: ${{ matrix.action_path }}
-        run: npm ci
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
 
       - name: Build (ncc)
         working-directory: ${{ matrix.action_path }}
         run: npm run build
 
-      - name: Verificar dist/ commiteado
+      - name: Verificar que dist/ está actualizado y commiteado
         run: |
           if ! git diff --quiet -- ${{ matrix.action_path }}/dist; then
-            echo "::error ::Hay cambios en ${{ matrix.action_path }}/dist sin commitear. Ejecuta build y sube el resultado."
+            echo "::error ::Hay cambios en ${{ matrix.action_path }}/dist sin commitear. Ejecuta 'npm run build' y sube dist/."
             exit 1
           fi
