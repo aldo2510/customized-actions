@@ -1,60 +1,57 @@
-name: Build Actions (autocommit dist)
+name: Build all actions and commit dist
 
 on:
   push:
     branches: [ "main" ]
     paths-ignore:
       - ".github/actions/**/dist/**"
-  pull_request:
-    branches: [ "main" ]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build-actions:
+  build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        action_path:
-          - .github/actions/validate-pom
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: Instalar dependencias
-        working-directory: ${{ matrix.action_path }}
+      - name: Build all actions
         run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
+          echo "🔍 Searching for actions to build..."
+          ACTIONS=$(find .github/actions -type f -name package.json -exec dirname {} \;)
+          for dir in $ACTIONS; do
+            echo "⚙️ Building $dir"
+            cd "$dir"
+            npm install --no-audit --no-fund --silent
+            if npm run build >/dev/null 2>&1; then
+              echo "✅ Built $dir"
+            else
+              echo "⚠️ Skipping $dir (no build script)"
+            fi
+            cd - >/dev/null
+            git add "$dir/dist" || true
+          done
 
-      - name: Build (ncc) → genera dist/
-        working-directory: ${{ matrix.action_path }}
-        run: npm run build
-
-      - name: Autocommit de dist/ si hay cambios
+      - name: Commit dist changes (if any)
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          ACTION_PATH="${{ matrix.action_path }}"
-          git add "$ACTION_PATH/dist" || true
-
           if git diff --cached --quiet; then
-            echo "No hay cambios en $ACTION_PATH/dist"
+            echo "✅ No changes to commit."
             exit 0
           fi
 
-          echo "Committing changes for $ACTION_PATH"
-          git commit -m "chore(${ACTION_PATH}): build dist [skip ci]"
-          git push
+          git fetch origin main
+          git pull --rebase origin main || true
+
+          git commit -m "chore(actions): auto-build dist [skip ci]"
+          git push origin HEAD:main
