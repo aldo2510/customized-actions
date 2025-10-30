@@ -1,0 +1,13 @@
+name: "Validate POM SemVer"
+description: "Lee la versión del pom.xml y falla si no cumple x.y.z"
+inputs:
+  pom-path:
+    description: "Ruta al pom.xml"
+    required: false
+    default: "pom.xml"
+outputs:
+  version:
+    description: "Versión leída del POM"
+runs:
+  using: node20
+  main: dist/index.js

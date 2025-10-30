@@ -1,0 +1,8 @@
+{
+  "name": "@aldo2510/check-node-version",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": { "@actions/core": "^1.11.1" },
+  "devDependencies": { "@vercel/ncc": "^0.38.1" },
+  "scripts": { "build": "ncc build src/index.js -o dist" }
+}

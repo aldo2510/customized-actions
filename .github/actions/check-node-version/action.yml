@@ -1,0 +1,9 @@
+name: "Check Node Version"
+description: "Falla si la versión de Node no coincide"
+inputs:
+  required-version:
+    description: "Versión exacta de Node esperada (ej. 20.x)"
+    required: true
+runs:
+  using: node20
+  main: dist/index.js

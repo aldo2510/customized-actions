@@ -1,0 +1,56 @@
+name: Release
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "x.y.z"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+
+      # (Opcional) compilar aquí también si quieres asegurar consistencia
+      - name: Build all actions
+        run: |
+          for d in .github/actions/*; do
+            if [ -f "$d/package.json" ]; then
+              (cd "$d" && npm ci && npm run build)
+            fi
+          done
+          if ! git diff --quiet -- .github/actions/*/dist; then
+            echo "::error ::Hay cambios en dist/ sin commitear."
+            exit 1
+          fi
+
+      - name: Crear tag desde dispatch (si aplica)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          V="${{ inputs.version }}"
+          [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error ::Versión inválida"; exit 1; }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "v$V" -m "Release v$V"
+          git push origin "v$V"
+
+      - name: Alias mayor (v1 -> vX.Y.Z)
+        run: |
+          TAG="${{ github.ref_name || format('v{0}', inputs.version) }}"
+          MAJOR="${TAG%%.*}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -fa "$MAJOR" -m "Update $MAJOR to $TAG" "$TAG"
+          git push origin "$MAJOR" --force

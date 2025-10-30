@@ -1,0 +1,37 @@
+name: CI
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-actions:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        action_path:
+          - .github/actions/validate-pom
+          - .github/actions/check-node-version
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install deps
+        working-directory: ${{ matrix.action_path }}
+        run: npm ci
+
+      - name: Build (ncc)
+        working-directory: ${{ matrix.action_path }}
+        run: npm run build
+
+      - name: Verificar dist/ commiteado
+        run: |
+          if ! git diff --quiet -- ${{ matrix.action_path }}/dist; then
+            echo "::error ::Hay cambios en ${{ matrix.action_path }}/dist sin commitear. Ejecuta build y sube el resultado."
+            exit 1
+          fi
