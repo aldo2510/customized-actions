@@ -1,9 +1,6 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
   workflow_dispatch:
     inputs:
       version:
@@ -51,25 +48,3 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag "v$V" -m "Release v$V"
           git push origin "v$V"
-
-      # Crear release y subir dist
-      - name: Crear release en GitHub
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.TAG }}
-          name: ${{ env.TAG }}
-          generate_release_notes: true
-          fail_on_unmatched_files: false
-          append_body: false
-          files: |
-            .github/actions/**/dist/**
-
-      # Alias mayor (v1 → vX.Y.Z)
-      - name: Alias mayor
-        run: |
-          echo "TAG=${TAG}"
-          MAJOR="${TAG%%.*}"  # v1 de v1.2.3
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -fa "$MAJOR" -m "Update $MAJOR to $TAG" "$TAG"
-          git push origin "$MAJOR" --force
